@@ -9,8 +9,6 @@ consumer_secret_key = "SECRET_KEY"
 access_token = "ACCESS_TOKEN"
 access_token_secret = "SECRET_TOKEN"
 
-MAX_NUM_RETWEETS = 15
-
 class DonationBot(threading.Thread):
 
     """
@@ -20,7 +18,7 @@ class DonationBot(threading.Thread):
 
     def __init__(self, consumer_key, consumer_secret_key, access_token, access_token_secret):
         self.api = self.tweepy_api_setup(consumer_key, consumer_secret_key, access_token, access_token_secret)         
-        self.output_queue = []
+        self.output_queue = set()
         self.retweeted_ids = set()
         self.last_id = 0
         threading.Thread.__init__(self)
@@ -32,18 +30,19 @@ class DonationBot(threading.Thread):
         return tweepy.API(auth, wait_on_rate_limit=True, wait_on_rate_limit_notify=True)
 
     def retweet_from_queue(self):
-        num_pops = min(MAX_NUM_RETWEETS, len(self.output_queue))
-        for i in range(num_pops):
-            tweet_id = self.output_queue.pop(0)
-            self.retweeted_ids.add(tweet_id)
+        if len(self.output_queue) <= 0:
+            return
+        
+        tweet_id = self.output_queue.pop()
+        self.retweeted_ids.add(tweet_id)
 
-            try:
-                self.api.retweet(tweet_id)
-            except tweepy.TweepError as e:
-                #most likely this error is caused by retweeting something we have already retweeted
-                #todo: need to keep track of all time user retweets 
-                print e
-                pass
+        try:
+            self.api.retweet(tweet_id)
+        except tweepy.TweepError as e:
+            #most likely this error is caused by retweeting something we have already retweeted
+            #todo: need to keep track of all time user retweets 
+            print e
+            pass
 
     #cash money or it didn't happen
     def has_monetary_value(self, text):
@@ -64,12 +63,12 @@ class DonationBot(threading.Thread):
             return self.has_monetary_value(tweet.text)
 
     def scan_for_tweets(self):
-        tweets = [status for status in tweepy.Cursor(self.api.search, q="For every RT donate", since_id=self.last_id, include_rts=False).items(1000)]
+        tweets = [status for status in tweepy.Cursor(self.api.search, q="For every RT donate", since_id=self.last_id, include_rts=False).items(100)]
 
         for tweet in tweets:
             self.last_twitter_id = tweet.id
             if self.is_valid_tweet(tweet):
-                self.output_queue.append(tweet.id)
+                self.output_queue.add(tweet.id)
                             
     def run(self):
         while(1):
