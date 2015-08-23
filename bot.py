@@ -2,12 +2,13 @@ import tweepy
 import threading
 import time
 import re
+from random import randint
 
 #todo: put this somewhere better
-consumer_key =  "CONSUMER_KEY"
-consumer_secret_key = "SECRET_KEY"
-access_token = "ACCESS_TOKEN"
-access_token_secret = "SECRET_TOKEN"
+consumer_key =  ""
+consumer_secret_key = ""
+access_token = ""
+access_token_secret = ""
 
 class DonationBot(threading.Thread):
 
@@ -52,12 +53,10 @@ class DonationBot(threading.Thread):
         else:
             return True
 
-    def is_valid_tweet(self, tweet):
-       #if this is a retweet, get the original tweet
-        if hasattr(tweet, 'retweeted_status'):
-            tweet = tweet.retweeted_status
-            
-        if (tweet.retweet_count < 5) or (tweet.id in self.output_queue) or (tweet.id in self.retweeted_ids):
+    def is_valid_tweet(self, tweet):            
+        if (tweet.retweet_count < 10):
+            return False
+        elif tweet.id in self.retweeted_ids or tweet.retweeted_status.id in self.retweeted_ids:
             return False
         else:
             return self.has_monetary_value(tweet.text)
@@ -74,7 +73,7 @@ class DonationBot(threading.Thread):
         while(1):
             self.scan_for_tweets()
             self.retweet_from_queue()
-            time.sleep(60)
+            time.sleep(60 + randint(0,30))
 
 if __name__ == "__main__":
     t = DonationBot(consumer_key, consumer_secret_key, access_token,access_token_secret)
