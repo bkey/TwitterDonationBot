@@ -1,14 +1,11 @@
+# -*- coding: utf-8 -*-
+
 import tweepy
 import threading
 import time
 import re
 from random import randint
-
-#todo: put this somewhere better
-consumer_key =  ""
-consumer_secret_key = ""
-access_token = ""
-access_token_secret = ""
+import sys
 
 class DonationBot(threading.Thread):
 
@@ -17,16 +14,30 @@ class DonationBot(threading.Thread):
         so you don't have to
     """
 
-    def __init__(self, consumer_key, consumer_secret_key, access_token, access_token_secret):
-        self.api = self.tweepy_api_setup(consumer_key, consumer_secret_key, access_token, access_token_secret)         
+    def __init__(self, filename):
+        self.read_config(filename)
+        self.api = self.tweepy_api_setup()
+
         self.output_queue = set()
         self.retweeted_ids = set()
         self.last_id = 0
         threading.Thread.__init__(self)
 
-    def tweepy_api_setup(self, consumer_key, consumer_secret_key, access_token, access_token_secret):
-        auth = tweepy.OAuthHandler(consumer_key, consumer_secret_key)
-        auth.set_access_token(access_token, access_token_secret)
+    def read_config(self, filename):
+        self.config = {}
+        with open(filename, "r") as in_file:
+            for line in in_file:
+                line = line.split(":")
+                parameter = line[0].strip()
+                value = line[1].strip()
+                self.config[parameter] = value
+
+        if not all (key in self.config for key in ("consumer_key","consumer_secret_key","access_token","access_token_secret")):
+            raise Exception("Configuration file %s does not include all required parameters" % (filename))
+
+    def tweepy_api_setup(self):
+        auth = tweepy.OAuthHandler(self.config["consumer_key"], self.config["consumer_secret_key"])
+        auth.set_access_token(self.config["access_token"], self.config["access_token_secret"])
 
         return tweepy.API(auth, wait_on_rate_limit=True, wait_on_rate_limit_notify=True)
 
@@ -42,7 +53,6 @@ class DonationBot(threading.Thread):
         except tweepy.TweepError as e:
             #most likely this error is caused by retweeting something we have already retweeted
             #todo: need to keep track of all time user retweets 
-            print e
             pass
 
     #cash money or it didn't happen
@@ -54,9 +64,7 @@ class DonationBot(threading.Thread):
             return True
 
     def is_valid_tweet(self, tweet):            
-        if (tweet.retweet_count < 10):
-            return False
-        elif tweet.id in self.retweeted_ids or tweet.retweeted_status.id in self.retweeted_ids:
+        if (tweet.id in self.retweeted_ids) or (tweet.retweeted_status.id in self.retweeted_ids):
             return False
         else:
             return self.has_monetary_value(tweet.text)
@@ -67,14 +75,21 @@ class DonationBot(threading.Thread):
         for tweet in tweets:
             self.last_twitter_id = tweet.id
             if self.is_valid_tweet(tweet):
-                self.output_queue.add(tweet.id)
+                if tweet.retweeted_status.id:
+                    self.output_queue.add(tweet.retweeted_status.id)
+                else:
+                    self.output_queue.add(tweet.id)
                             
     def run(self):
         while(1):
             self.scan_for_tweets()
-            self.retweet_from_queue()
-            time.sleep(60 + randint(0,30))
+            while(len(self.output_queue)>0):
+                self.retweet_from_queue()
+                time.sleep(60 + (randint(0,30)))
 
 if __name__ == "__main__":
-    t = DonationBot(consumer_key, consumer_secret_key, access_token,access_token_secret)
+    if len(sys.argv) == 1:
+        raise Exception("Missing command line argument for config filename")
+
+    t = DonationBot(sys.argv[1])
     t.start()
